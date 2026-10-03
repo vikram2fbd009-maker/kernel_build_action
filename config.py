@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Check and configure kernel config options for LXC/Docker or Kali NetHunter support.
+Check and configure kernel config options for LXC/Docker, Kali NetHunter,
+or ReSukiSU + SUSFS + KPatch + ZeroMount support.
 """
 
 import argparse
@@ -441,6 +442,61 @@ CONFIG_DVB_SP2
 
 NETHUNTER_CONFIGS_EQ = ""
 
+# =============================================================================
+# ReSukiSU + SUSFS + KPatch + ZeroMount Configuration
+# =============================================================================
+
+RESUKISU_CONFIGS_ON = """
+# === ReSukiSU / KernelSU Core ===
+CONFIG_KSU
+CONFIG_KSU_MANUAL_HOOK
+
+# === SUSFS Core ===
+CONFIG_KSU_SUSFS
+CONFIG_KSU_SUSFS_ENABLE_LOG
+CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+
+# === SUSFS Path / Mount Hiding ===
+CONFIG_KSU_SUSFS_SUS_PATH
+CONFIG_KSU_SUSFS_SUS_MOUNT
+CONFIG_KSU_SUSFS_SUS_MAP
+CONFIG_KSU_SUSFS_SUS_KSTAT
+CONFIG_KSU_SUSFS_SUS_OVERLAYFS
+
+# === SUSFS Spoofing ===
+CONFIG_KSU_SUSFS_SPOOF_UNAME
+CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+CONFIG_KSU_SUSFS_OPEN_REDIRECT
+CONFIG_KSU_SUSFS_AVC_LOG_SPOOFING
+
+# === SUSFS Auto Mount Features ===
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSTAT
+CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_MOUNT
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_PATH
+
+# === KPatch / KPM Module Support ===
+CONFIG_KPM
+CONFIG_KALLSYMS
+CONFIG_KALLSYMS_ALL
+
+# === ZeroMount VFS Driver ===
+CONFIG_ZEROMOUNT
+"""
+
+RESUKISU_CONFIGS_OFF = """
+# Disable KProbes (use manual hooks for non-GKI)
+CONFIG_KSU_WITH_KPROBES
+
+# Disable deprecated SUSFS features
+CONFIG_KSU_SUSFS_SUS_SU
+CONFIG_KSU_SUSFS_MAGIC_MOUNT
+CONFIG_KSU_SUSFS_OVERLAYS_AUTO_KSTAT
+"""
+
+RESUKISU_CONFIGS_EQ = ""
+
 # Type configuration mapping
 TYPE_CONFIGS = {
     "lxc": {
@@ -458,6 +514,14 @@ TYPE_CONFIGS = {
         "description": "Check and configure kernel for Kali NetHunter",
         "check_message": "Checking config file for kali specific config options.",
         "fix_message": "Made {} fixes.",
+    },
+    "resukisu": {
+        "configs_on": RESUKISU_CONFIGS_ON,
+        "configs_off": RESUKISU_CONFIGS_OFF,
+        "configs_eq": RESUKISU_CONFIGS_EQ,
+        "description": "Check and configure kernel for ReSukiSU + SUSFS + KPatch + ZeroMount",
+        "check_message": "Checking config file for ReSukiSU + SUSFS + KPatch + ZeroMount specific config options.",
+        "fix_message": "Applied {} ReSukiSU/SUSFS/KPM/ZeroMount config fixes.",
     },
 }
 
@@ -484,7 +548,8 @@ def color_white(text: str) -> str:
 
 def parse_configs(config_text: str) -> list[str]:
     """Parse config list into individual items."""
-    return [line.strip() for line in config_text.strip().split('\n') if line.strip()]
+    return [line.strip() for line in config_text.strip().split('\n')
+            if line.strip() and not line.strip().startswith('#')]
 
 
 def _content(config_file: Path) -> str:
@@ -665,15 +730,16 @@ def main() -> None:
     """Main entry point for checking and configuring kernel options."""
     parser = argparse.ArgumentParser(description='Check and configure kernel options')
     parser.add_argument('config_file', help='Path to kernel config file')
-    parser.add_argument('--type', '-t', required=True, choices=['lxc', 'nethunter'],
-                        help='Configuration type: lxc or nethunter')
+    parser.add_argument('--type', '-t', required=True,
+                        choices=['lxc', 'nethunter', 'resukisu'],
+                        help='Configuration type: lxc, nethunter, or resukisu')
     parser.add_argument('-w', action='store_true', help='Write changes to config file')
     args = parser.parse_args()
 
     config_file = Path(args.config_file).resolve()
 
     if args.type not in TYPE_CONFIGS:
-        print(f"Error: Unknown type '{args.type}'. Use 'lxc' or 'nethunter'.")
+        print(f"Error: Unknown type '{args.type}'. Use 'lxc', 'nethunter', or 'resukisu'.")
         sys.exit(1)
 
     type_config = TYPE_CONFIGS[args.type]
